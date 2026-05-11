@@ -177,7 +177,11 @@ main.o: CFLAGS += -Dmain=ac_entry
 boot.o: CFLAGS += -Dmain=boot_main
 
 $(OUTPUT).3dsx  : $(OUTPUT).elf $(_3DSXDEPS)
-$(OFILES_SOURCES) : $(HFILES_PICA)
+# bin2o emits both `.shbin.o` and `_shbin.h` from one recipe, but some
+# devkitPro versions don't expose a pattern rule for the header on its
+# own. Depend on the .o instead -- the .h is produced as a side effect of
+# building it, so by the time any source compiles, the header is on disk.
+$(OFILES_SOURCES) : $(OFILES_PICA)
 $(OUTPUT).elf   : $(OFILES)
 
 -include $(DEPENDS)
