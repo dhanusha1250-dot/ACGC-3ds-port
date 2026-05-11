@@ -113,31 +113,39 @@ int n3ds_gx_init(void) {
 #ifdef __3DS__
     if (g_n3ds_gx.initialized) return 1;
 
+    printf("[GX] step 1: C3D_Init\n");
     if (!C3D_Init(N3DS_GPU_CMDBUF_SIZE)) {
         printf("[GX] C3D_Init failed\n");
         return 0;
     }
+    printf("[GX] step 2: create top RT\n");
     if (!n3ds_gx_create_top_target()) {
         printf("[GX] render target alloc failed\n");
         C3D_Fini();
         return 0;
     }
+    printf("[GX] step 3: load shader\n");
     if (!n3ds_gx_load_shader()) {
         printf("[GX] shader load failed\n");
         C3D_RenderTargetDelete(g_n3ds_gx.target_top);
         C3D_Fini();
         return 0;
     }
+    printf("[GX] step 4: attr info\n");
     n3ds_gx_setup_attrs();
+    printf("[GX] step 5: default TEV\n");
     n3ds_gx_setup_default_tev();
+    printf("[GX] step 6: render state\n");
     n3ds_gx_setup_state();
 
+    printf("[GX] step 7: projection matrix\n");
     /* Orthographic projection covering [-1,1] in both axes, with the 90deg
      * top-screen rotation baked in (last arg = true). Triangle vertices in
      * the test draw are authored in this clip space. */
     Mtx_OrthoTilt(&g_n3ds_gx.projection,
                   -1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f, true);
 
+    printf("[GX] step 8: VBO alloc\n");
     /* VBO: pre-allocate space for a handful of test vertices. Real game
      * draws will reallocate / stream through this. linearAlloc is required
      * for buffers the GPU reads. */
@@ -148,6 +156,7 @@ int n3ds_gx_init(void) {
         return 0;
     }
 
+    printf("[GX] step 9: BufInfo\n");
     C3D_BufInfo* bufInfo = C3D_GetBufInfo();
     BufInfo_Init(bufInfo);
     BufInfo_Add(bufInfo, g_n3ds_gx.vbo, sizeof(N3DSVertex), 2, 0x10);

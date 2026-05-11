@@ -71,39 +71,48 @@ int n3ds_platform_frame(void) {
     return 1;
 }
 
+/* Wait until SELECT is pressed (or HOME via aptMainLoop). Used to keep the
+ * console visible after the main loop exits so trace logs are readable. */
+static void n3ds_wait_for_exit(void) {
+    printf("\nPress SELECT to exit.\n");
+    while (aptMainLoop()) {
+        hidScanInput();
+        if (hidKeysDown() & KEY_SELECT) break;
+        gspWaitForVBlank();
+    }
+}
+
 int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
 
     n3ds_platform_init();
 
-    if (!n3ds_gx_init()) {
-        /* GX failed but the console is alive -- keep the message visible
-         * until the user hits START. */
-        printf("\n[GX] init failed, running console-only\n");
-        while (g_n3ds_running && n3ds_platform_frame()) {
-            gspWaitForVBlank();
+    int gx_ok = n3ds_gx_init();
+
+    if (gx_ok) {
+#ifdef N3DS_WIRE_DECOMP
+        /* TODO: n3ds_disc_init(), n3ds_assets_init() before this once those land. */
+        ac_entry();              /* registers HotStartEntry */
+        boot_main(0, NULL);      /* runs HotStartEntry loop; returns when game exits */
+#else
+        /* Scaffold mode: draw a test triangle every frame to prove the GX
+         * pipeline is alive. START exits the draw loop (not the app). */
+        while (g_n3ds_running) {
+            if (!n3ds_platform_frame()) break;
+            n3ds_gx_begin_frame();
+            n3ds_gx_draw_test_triangle();
+            n3ds_gx_end_frame();
         }
-        n3ds_platform_shutdown();
-        return 1;
+        printf("\nDraw loop exited (START pressed).\n");
+#endif
+    } else {
+        printf("\n[GX] init failed -- running console-only.\n");
     }
 
-#ifdef N3DS_WIRE_DECOMP
-    /* TODO: n3ds_disc_init(), n3ds_assets_init() before this once those land. */
-    ac_entry();              /* registers HotStartEntry */
-    boot_main(0, NULL);      /* runs HotStartEntry loop; returns when game exits */
-#else
-    /* Scaffold mode: draw a test triangle every frame to prove the GX
-     * pipeline is alive. */
-    while (g_n3ds_running) {
-        if (!n3ds_platform_frame()) break;
-        n3ds_gx_begin_frame();
-        n3ds_gx_draw_test_triangle();
-        n3ds_gx_end_frame();
-    }
-#endif
+    n3ds_wait_for_exit();
 
     n3ds_gx_shutdown();
     n3ds_platform_shutdown();
-    return 0;
+    return gx_ok ? 0 : 1;
 }
