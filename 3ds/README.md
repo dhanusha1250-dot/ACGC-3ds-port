@@ -34,6 +34,23 @@ via the Homebrew Launcher, or run under Citra/Lime3DS:
 citra-qt AnimalCrossing.3dsx
 ```
 
+### WIRE_DECOMP
+
+```
+make WIRE_DECOMP=1
+```
+
+Enables the same `-Dmain=ac_entry` / `-Dmain=boot_main` rename trick the PC
+port uses (see `pc/CMakeLists.txt:342-352`). `n3ds_main.c` then forward-
+declares `ac_entry()` / `boot_main()` and calls them after platform init,
+matching the order in `pc/src/pc_main.c:340-352`.
+
+This build will currently fail — `src/static/boot.c` transitively pulls in
+the entire OS / JSystem / GX / DVD / sound / padmgr surface, none of which
+is implemented for 3DS yet. The flag exists so the wiring is in place for
+M1/M2 work in `docs/3DS_PORTING.md`. The default build (no flag) stays as
+the hello-world scaffold.
+
 ## Caveats
 
 - The build was authored from spec; it has **not** been verified to compile

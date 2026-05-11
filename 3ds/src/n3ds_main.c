@@ -1,13 +1,16 @@
-/* main.c - 3DS entry point.
+/* n3ds_main.c - 3DS entry point (mirrors pc/src/pc_main.c).
  *
- * Scaffold hello-world: boots libctru, initializes citro3d, clears the top and
- * bottom screens to distinct colors, polls input, and exits cleanly on START.
+ * Default build (WIRE_DECOMP=0) is a hello-world: boots libctru, initializes
+ * citro3d, opens a console on the bottom screen, polls input, exits on START.
  *
- * When the real port is wired in, this file's main() will end up doing roughly
- * what pc/src/pc_main.c does: parse argv-equivalent (3dsx --param or config
- * file), call n3ds_platform_init(), initialize disc/asset/audio subsystems,
- * call ac_entry() to register the game's HotStartEntry, then call boot_main()
- * to enter the game loop.
+ * `make WIRE_DECOMP=1` enables the call into the decomp's renamed entry
+ * points (ac_entry / boot_main). That build will currently fail until the
+ * GX / OS / JSystem / audio / pad / disc subsystems are ported. The wiring is
+ * here so it can be flipped on as those land.
+ *
+ * The file is named n3ds_main.c (not main.c) to avoid colliding with the
+ * decomp's `src/main.c` -- the devkitARM Makefile template flattens object
+ * files to basenames.
  */
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +19,27 @@
 #include <citro3d.h>
 
 #include "n3ds_platform.h"
+
+/* --- Decomp entry points (mirrors pc/src/pc_main.c:259-260) ---
+ *
+ * Both of these are `main()` in the decomp tree, renamed at compile time:
+ *
+ *   src/main.c         `void main(void)`            -> ac_entry
+ *   src/static/boot.c  `int main(int,const char**)` -> boot_main
+ *
+ * The rename is done via per-file `-Dmain=...` flags in the Makefile, only
+ * active when WIRE_DECOMP=1. See 3ds/Makefile and docs/3DS_PORTING.md.
+ *
+ * Call order matches pc_main.c:340-352:
+ *   ac_entry()          -> sets HotStartEntry = &entry (src/main.c:134)
+ *   boot_main(0, NULL)  -> OSInit/JW_Init/sound_initial/...,
+ *                          then `while (HotStartEntry) HotStartEntry = HotStartEntry();`
+ *                          which is where the real game loop lives.
+ */
+#ifdef N3DS_WIRE_DECOMP
+extern void ac_entry(void);
+extern int  boot_main(int argc, const char** argv);
+#endif
 
 /* --- Globals (mirrors pc_main.c) --- */
 int g_n3ds_running = 1;
@@ -121,10 +145,19 @@ int main(int argc, char* argv[]) {
 
     n3ds_platform_init();
 
+#ifdef N3DS_WIRE_DECOMP
+    /* TODO: n3ds_disc_init(), n3ds_assets_init() before this once those land. */
+    ac_entry();              /* registers HotStartEntry */
+    boot_main(0, NULL);      /* runs HotStartEntry loop; returns when game exits */
+    /* TODO: n3ds_disc_shutdown() once it exists. */
+#else
+    /* Scaffold mode: hello-world loop. Holds the top screen + console open
+     * until START. Real game wiring lives behind WIRE_DECOMP=1. */
     while (g_n3ds_running) {
         if (!n3ds_platform_frame()) break;
         n3ds_platform_swap_buffers();
     }
+#endif
 
     n3ds_platform_shutdown();
     return 0;

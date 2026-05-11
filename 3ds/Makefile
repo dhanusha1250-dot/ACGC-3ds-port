@@ -33,8 +33,34 @@ TARGET      := AnimalCrossing
 BUILD       := build
 SOURCES     := src
 DATA        := data
-INCLUDES    := include ../include
+INCLUDES    := include ../include ../src
 ROMFS       := romfs
+
+#---------------------------------------------------------------------------------
+# Decomp wiring (opt-in).
+#
+# `make WIRE_DECOMP=1` pulls the decomp's `src/main.c` and `src/static/boot.c`
+# into the build and renames their `main()` functions to `ac_entry` and
+# `boot_main` respectively, the same trick `pc/CMakeLists.txt` uses.
+#
+# This WILL fail (compile errors first, then link errors) until all the
+# transitively-included subsystems are stubbed or ported — boot.c alone pulls
+# in OS, JSystem, JUT, GX, DVD, sound, padmgr, etc. The flag exists so the
+# wiring is in place for the M1/M2 work; default build stays as the scaffold
+# hello-world.
+#---------------------------------------------------------------------------------
+WIRE_DECOMP ?= 0
+
+ifeq ($(WIRE_DECOMP),1)
+    DECOMP_DIRS   := ../src ../src/static
+    DECOMP_CFILES := main.c boot.c
+    CFLAGS_EXTRA  := -DN3DS_WIRE_DECOMP \
+                     -DVERSION=0 -DF3DEX_GBI_2 -DNDEBUG -DBUGFIXES -D_LANGUAGE_C
+else
+    DECOMP_DIRS   :=
+    DECOMP_CFILES :=
+    CFLAGS_EXTRA  :=
+endif
 
 APP_TITLE      := Animal Crossing
 APP_DESCRIPTION:= 3DS port scaffold
@@ -52,11 +78,7 @@ CFLAGS  := -g -Wall -O0 -mword-relocations \
            -ffunction-sections \
            $(ARCH)
 
-CFLAGS  += $(INCLUDE) -D__3DS__ -DTARGET_3DS
-
-# Match the PC port's defines for any shared code we pull in later.
-# Commented out until we actually start linking decomp code.
-# CFLAGS += -DVERSION=0 -DF3DEX_GBI_2 -DNDEBUG -DBUGFIXES -D_LANGUAGE_C
+CFLAGS  += $(INCLUDE) -D__3DS__ -DTARGET_3DS $(CFLAGS_EXTRA)
 
 CXXFLAGS:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 CFLAGS  += -std=gnu11
@@ -76,11 +98,13 @@ export OUTPUT   := $(CURDIR)/$(TARGET)
 export TOPDIR   := $(CURDIR)
 
 export VPATH    := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-                   $(foreach dir,$(DATA),$(CURDIR)/$(dir))
+                   $(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
+                   $(foreach dir,$(DECOMP_DIRS),$(CURDIR)/$(dir))
 
 export DEPSDIR  := $(CURDIR)/$(BUILD)
 
-CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c))) \
+            $(DECOMP_CFILES)
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES:= $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
@@ -144,6 +168,13 @@ clean:
 else
 
 DEPENDS := $(OFILES:.o=.d)
+
+# --- decomp main() rename trick (mirrors pc/CMakeLists.txt:342-352) ---
+# src/main.c        : `void main(void)` -> ac_entry  (sets HotStartEntry)
+# src/static/boot.c : `int main(int,const char**)` -> boot_main  (HotStartEntry loop)
+# Per-target CFLAGS += only applies to these two objects.
+main.o: CFLAGS += -Dmain=ac_entry
+boot.o: CFLAGS += -Dmain=boot_main
 
 $(OUTPUT).3dsx  : $(OUTPUT).elf $(_3DSXDEPS)
 $(OFILES_SOURCES) : $(HFILES_PICA)
