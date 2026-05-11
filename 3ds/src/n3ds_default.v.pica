@@ -1,0 +1,49 @@
+; n3ds_default.v.pica - minimal PICA200 vertex shader.
+;
+; Matches the role of pc/shaders/default.vert in the PC port: take a position
+; + color, transform by the projection matrix, pass color through to TEV.
+;
+; Inputs (vertex attribute loaders, set up by AttrInfo_AddLoader in n3ds_gx.c):
+;   v0 - position (vec3)
+;   v1 - color    (vec4, normalized u8 -> float)
+;
+; Uniforms:
+;   projection[4] - vec4 columns of the projection matrix
+;                   (Mtx_OrthoTilt orients clip space for the rotated top screen)
+;
+; Outputs:
+;   position - clip-space vertex position
+;   color    - per-vertex color forwarded to TEV stage 0
+
+; --- constants ---
+.constf myconst(0.0, 1.0, -1.0, 0.1)
+.alias  zeros myconst.xxxx
+.alias  ones  myconst.yyyy
+
+; --- uniforms ---
+.fvec projection[4]
+
+; --- inputs ---
+.alias inpos v0
+.alias inclr v1
+
+; --- outputs ---
+.out outpos position
+.out outclr color
+
+.proc main
+	; Force w=1 on the input position (the attribute loader supplies only xyz).
+	mov r0.xyz, inpos
+	mov r0.w,   ones
+
+	; outpos = projection * r0   (column-major: each row is a dp4)
+	dp4 outpos.x, projection[0], r0
+	dp4 outpos.y, projection[1], r0
+	dp4 outpos.z, projection[2], r0
+	dp4 outpos.w, projection[3], r0
+
+	; Pass color straight through to the TEV pipeline as the primary color.
+	mov outclr, inclr
+
+	end
+.end

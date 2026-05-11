@@ -60,8 +60,8 @@ void n3ds_platform_shutdown(void);
  * stop). Otherwise returns 1. */
 int  n3ds_platform_frame(void);
 
-/* Present the current frame to both screens. */
-void n3ds_platform_swap_buffers(void);
+/* Frame presentation lives in n3ds_gx_end_frame() -- the GPU pipeline owns
+ * VBlank sync via C3D_FrameBegin/End. */
 
 #ifdef __cplusplus
 }
