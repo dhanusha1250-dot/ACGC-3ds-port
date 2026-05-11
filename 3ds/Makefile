@@ -177,12 +177,33 @@ main.o: CFLAGS += -Dmain=ac_entry
 boot.o: CFLAGS += -Dmain=boot_main
 
 $(OUTPUT).3dsx  : $(OUTPUT).elf $(_3DSXDEPS)
-# bin2o emits both `.shbin.o` and `_shbin.h` from one recipe, but some
-# devkitPro versions don't expose a pattern rule for the header on its
-# own. Depend on the .o instead -- the .h is produced as a side effect of
-# building it, so by the time any source compiles, the header is on disk.
-$(OFILES_SOURCES) : $(OFILES_PICA)
+$(OFILES_SOURCES) : $(HFILES_PICA)
 $(OUTPUT).elf   : $(OFILES)
+
+#---------------------------------------------------------------------------------
+# Shader assembly: picasso compiles .v.pica -> .shbin, bin2s embeds the bytes
+# as a .o + emits an extern-decl header. devkitPro's $(DEVKITARM)/3ds_rules
+# does NOT ship this pattern rule -- every 3ds-examples Makefile defines it
+# locally. Recipe copied from the canonical 3ds-examples template.
+#---------------------------------------------------------------------------------
+define shader-as
+	$(eval CURBIN := $*.shbin)
+	$(eval DEPSFILE := $(DEPSDIR)/$*.shbin.d)
+	echo "$(CURBIN).o: $< $(wildcard $(dir $<)include/*.h)" > $(DEPSFILE)
+	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"_end[];" > `(echo $(CURBIN) | tr . _)`.h
+	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"[];" >> `(echo $(CURBIN) | tr . _)`.h
+	echo "extern const u32" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`_size";" >> `(echo $(CURBIN) | tr . _)`.h
+	picasso -o $(CURBIN) $1
+	bin2s -a 4 $(CURBIN) | $(AS) -o $*.shbin.o
+endef
+
+%.shbin.o %_shbin.h : %.v.pica
+	@echo $(notdir $<)
+	@$(call shader-as,$<)
+
+%.shbin.o %_shbin.h : %.shlist
+	@echo $(notdir $<)
+	@$(call shader-as,$(foreach file,$(shell cat $<),$(dir $<)$(file)))
 
 -include $(DEPENDS)
 
